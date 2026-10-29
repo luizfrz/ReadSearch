@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
@@ -9,6 +9,8 @@ import SearchScreen from './src/screens/SearchScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import DeviceScreen from './src/screens/DeviceScreen';
 import Splash from './src/components/Splash';
+import Welcome from './src/components/Welcome';
+import { WelcomeContext, hasSeenWelcome, markWelcomeSeen } from './src/welcome';
 import ReaderScreen from './src/screens/ReaderScreen';
 import { colors } from './src/theme';
 
@@ -36,8 +38,14 @@ function Home() {
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [welcome, setWelcome] = useState(null); // null = fechada; { first } = aberta
+  useEffect(() => {
+    hasSeenWelcome().then((seen) => { if (!seen) setWelcome({ first: true }); });
+  }, []);
+  const closeWelcome = () => { markWelcomeSeen(); setWelcome(null); };
   return (
     <SafeAreaProvider>
+      <WelcomeContext.Provider value={{ open: () => setWelcome({ first: false }) }}>
       <NavigationContainer theme={theme}>
         <StatusBar style="light" />
         <Stack.Navigator>
@@ -45,7 +53,9 @@ export default function App() {
           <Stack.Screen name="Reader" component={ReaderScreen} options={{ title: 'Leitor', headerStyle: { backgroundColor: colors.card }, headerTintColor: colors.text }} />
         </Stack.Navigator>
       </NavigationContainer>
+        {welcome && <Welcome first={welcome.first} onClose={closeWelcome} />}
         {!ready && <Splash onDone={() => setReady(true)} />}
+      </WelcomeContext.Provider>
     </SafeAreaProvider>
   );
 }

@@ -7,6 +7,7 @@ import { KINDS, search } from '../api';
 import { addRecent, clearRecents, getRecents } from '../cache';
 import BookCard from '../components/BookCard';
 import Skeleton from '../components/Skeleton';
+import SearchProgress from '../components/SearchProgress';
 import { colors, kindColors } from '../theme';
 
 const SUGGESTIONS = { hq: ['Batman', 'Spider-Man', 'Mafalda', 'Turma da Mônica'], book: ['Dom Casmurro', 'Dracula', 'Sherlock Holmes', 'Machado de Assis'], article: ['machine learning', 'climate change', 'neuroscience', 'quantum'] };
@@ -18,6 +19,7 @@ export default function SearchScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recents, setRecents] = useState([]);
+  const [progress, setProgress] = useState({ done: 0, total: 1 });
   const ctrl = useRef(null);
 
   useEffect(() => { getRecents().then(setRecents); }, []);
@@ -31,8 +33,9 @@ export default function SearchScreen({ navigation }) {
       const c = (ctrl.current = new AbortController());
       setLoading(true);
       setError(null);
+      setProgress({ done: 0, total: 1 });
       try {
-        const out = await search(q, kind, { signal: c.signal, onResults: (r) => !c.signal.aborted && setResults(r) });
+        const out = await search(q, kind, { signal: c.signal, onResults: (r) => !c.signal.aborted && setResults(r), onProgress: (done, total) => !c.signal.aborted && setProgress({ done, total }) });
         if (!c.signal.aborted) {
           setResults(out);
           addRecent(q).then(setRecents);
@@ -87,6 +90,7 @@ export default function SearchScreen({ navigation }) {
           );
         })}
       </View>
+      <SearchProgress active={loading} done={progress.done} total={progress.total} label={`Buscando ${KINDS.find((k) => k.key === kind).label.toLowerCase()}…`} />
       {error ? <Text style={{ color: colors.accent, marginBottom: 10 }}>{error}</Text> : null}
     </View>
   );

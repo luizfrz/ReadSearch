@@ -86,7 +86,7 @@ async function searchArticles(query, signal) {
 
 // Busca com cache e entrega progressiva: `onResults` recebe os resultados assim que
 // cada fonte responde, sem esperar pela mais lenta. `signal` cancela buscas antigas.
-export async function search(query, kind, { signal, onResults } = {}) {
+export async function search(query, kind, { signal, onResults, onProgress } = {}) {
   const key = `${kind}:${query.toLowerCase()}`;
   const cached = await cacheGet(key);
   if (cached) {
@@ -103,7 +103,11 @@ export async function search(query, kind, { signal, onResults } = {}) {
   else if (kind === 'book') tasks = [searchGutenberg(query, signal), searchArchive(query, 'book', signal)];
   else tasks = [searchArchive(query, 'hq', signal)];
 
-  const settled = await Promise.allSettled(tasks.map((t) => t.then((l) => { push(l); return l; })));
+  let finished = 0;
+  const step = () => onProgress && onProgress(++finished, tasks.length);
+  const settled = await Promise.allSettled(
+    tasks.map((t) => t.then((l) => { push(l); step(); return l; }, (e) => { step(); throw e; }))
+  );
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
   if (settled.every((r) => r.status === 'rejected')) throw settled[0].reason;
   if (acc.length) cacheSet(key, acc);

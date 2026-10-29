@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useContext, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { clearDownloads, fmtBytes, getMemoryInfo } from '../device';
 import { clearCache } from '../cache';
 import { colors } from '../theme';
+import { WelcomeContext } from '../welcome';
 
 function Row({ icon, label, value }) {
   return (
@@ -20,6 +21,7 @@ function Row({ icon, label, value }) {
 
 export default function DeviceScreen() {
   const [info, setInfo] = useState(null);
+  const welcome = useContext(WelcomeContext);
   const load = useCallback(() => { getMemoryInfo().then(setInfo).catch(() => setInfo({})); }, []);
   useFocusEffect(load);
 
@@ -53,6 +55,11 @@ export default function DeviceScreen() {
           <Row icon="hardware-chip-outline" label="Memória RAM" value={fmtBytes(info?.ram)} />
           <Row icon="book-outline" label="Usado pelo ReadSearch" value={fmtBytes(info?.appUsed)} />
         </View>
+
+        <Pressable onPress={welcome.open} style={{ marginTop: 16, padding: 14, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.text} />
+          <Text style={{ color: colors.text, fontWeight: '700', marginLeft: 8 }}>Como o ReadSearch funciona</Text>
+        </Pressable>
 
         <Pressable onPress={clean} style={{ marginTop: 16, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.accent, flexDirection: 'row', justifyContent: 'center' }}>
           <Ionicons name="trash-outline" size={18} color={colors.accent} />

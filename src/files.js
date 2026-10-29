@@ -11,15 +11,21 @@ const proxied = (url) =>
 const safe = (s) => s.replace(/[^a-z0-9]+/gi, '_').slice(0, 80);
 
 // Baixa um arquivo remoto (cache em disco no mobile; URL direta na web).
-export async function download(url, name) {
+// `onProgress(fração, bytesBaixados, bytesTotais)` é chamado durante o download.
+export async function download(url, name, onProgress) {
   if (Platform.OS === 'web') return url;
   const dest = FileSystem.documentDirectory + safe(name);
   const info = await FileSystem.getInfoAsync(dest);
   if (info.exists) return dest;
-  const res = await FileSystem.downloadAsync(url, dest);
-  if (res.status >= 400) {
+  const task = FileSystem.createDownloadResumable(url, dest, {}, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+    if (onProgress && totalBytesExpectedToWrite > 0) {
+      onProgress(totalBytesWritten / totalBytesExpectedToWrite, totalBytesWritten, totalBytesExpectedToWrite);
+    }
+  });
+  const res = await task.downloadAsync();
+  if (!res || res.status >= 400) {
     await FileSystem.deleteAsync(dest, { idempotent: true });
-    throw new Error(`Download falhou (${res.status})`);
+    throw new Error(`Download falhou (${res ? res.status : 'sem resposta'})`);
   }
   return dest;
 }
