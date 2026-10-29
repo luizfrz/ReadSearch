@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.expo/
+web-build/
+.env
+.env.local
+*.log
+.DS_Store
+# gerado por scripts/build-pdfjs.js (npm install)
+src/pdfjsBundle.js
