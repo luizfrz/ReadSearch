@@ -8,7 +8,7 @@ import { colors } from '../theme';
 const POINTS = [
   { icon: 'globe-outline', title: 'Tudo vem da web', text: 'O ReadSearch não tem catálogo próprio. Ele apenas busca o que já está disponível publicamente na internet.' },
   { icon: 'server-outline', title: 'Nada hospedado no app', text: 'Nenhuma HQ, livro ou artigo está guardado no aplicativo. Os arquivos continuam nos sites de origem.' },
-  { icon: 'library-outline', title: 'Fontes abertas', text: 'As buscas consultam Internet Archive, Project Gutenberg e OpenAlex, que reúnem obras de acesso livre.' },
+  { icon: 'library-outline', title: 'Fontes abertas', text: 'As buscas consultam Internet Archive, Project Gutenberg, OpenAlex, MangaDex e repositórios públicos do GitHub.' },
   { icon: 'download-outline', title: 'Você controla o que fica no aparelho', text: 'Só o que você abre é baixado para ler e pode ser apagado quando quiser, na aba Memória.' },
 ];
 

@@ -26,7 +26,7 @@ export default function Splash({ onDone }) {
   return (
     <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, opacity: out, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
       <Animated.View style={{ alignItems: 'center', opacity: fade, transform: [{ scale }] }}>
-        <LinearGradient colors={['#ff5a5f', '#ff9a62']} style={{ width: 96, height: 96, borderRadius: 28, alignItems: 'center', justifyContent: 'center' }}>
+        <LinearGradient colors={[colors.accent, colors.accent2]} style={{ width: 96, height: 96, borderRadius: 28, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="book" size={48} color="#fff" />
         </LinearGradient>
         <Text style={{ color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 20, letterSpacing: 0.5 }}>

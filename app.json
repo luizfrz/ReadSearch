@@ -2,8 +2,8 @@
   "expo": {
     "name": "ReadSearch",
     "slug": "readsearch",
-    "backgroundColor": "#0b0d12",
-    "splash": { "backgroundColor": "#0b0d12", "resizeMode": "contain" },
+    "backgroundColor": "#050d24",
+    "splash": { "backgroundColor": "#050d24", "resizeMode": "contain" },
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",

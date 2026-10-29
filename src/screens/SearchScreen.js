@@ -10,10 +10,10 @@ import Skeleton from '../components/Skeleton';
 import SearchProgress from '../components/SearchProgress';
 import { colors, kindColors } from '../theme';
 
-const SUGGESTIONS = { hq: ['Batman', 'Spider-Man', 'Mafalda', 'Turma da Mônica'], book: ['Dom Casmurro', 'Dracula', 'Sherlock Holmes', 'Machado de Assis'], article: ['machine learning', 'climate change', 'neuroscience', 'quantum'] };
+const SUGGESTIONS = { all: ['Batman', 'Dom Casmurro', 'One Piece', 'machine learning'], manga: ['One Piece', 'Naruto', 'Berserk', 'Dragon Ball'], hq: ['Batman', 'Spider-Man', 'Mafalda', 'Turma da Mônica'], book: ['Dom Casmurro', 'Dracula', 'Sherlock Holmes', 'Machado de Assis'], article: ['machine learning', 'climate change', 'neuroscience', 'quantum'] };
 
 export default function SearchScreen({ navigation }) {
-  const [kind, setKind] = useState('hq');
+  const [kind, setKind] = useState('all');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +91,7 @@ export default function SearchScreen({ navigation }) {
         })}
       </View>
       <SearchProgress active={loading} done={progress.done} total={progress.total} label={`Buscando ${KINDS.find((k) => k.key === kind).label.toLowerCase()}…`} />
-      {error ? <Text style={{ color: colors.accent, marginBottom: 10 }}>{error}</Text> : null}
+      {error ? <Text style={{ color: colors.danger, marginBottom: 10 }}>{error}</Text> : null}
     </View>
   );
 

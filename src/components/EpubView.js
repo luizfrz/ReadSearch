@@ -1,30 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useRef } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { loadEpub, renderChapter } from '../epub';
+import { useEpub } from '../useEpub';
 import EpubControls from './EpubControls';
+import HighlightBar from './HighlightBar';
+import MarkerBar from './MarkerBar';
 import { colors } from '../theme';
 
-export default function EpubView({ uri, initialPage = 0, onPage }) {
-  const [epub, setEpub] = useState(null);
-  const [index, setIndex] = useState(initialPage);
-  const [html, setHtml] = useState(null);
-  const [error, setError] = useState(null);
+export default function EpubView(props) {
+  const ref = useRef(null);
+  const e = useEpub(props);
+  const run = (js) => ref.current && ref.current.injectJavaScript(`${js};true;`);
 
-  useEffect(() => { loadEpub(uri).then(setEpub).catch((e) => setError(e.message)); }, [uri]);
-  useEffect(() => {
-    if (!epub) return;
-    const i = Math.min(index, epub.chapters.length - 1);
-    renderChapter(epub, i).then(setHtml).catch((e) => setError(e.message));
-    onPage && onPage(i, epub.chapters.length);
-  }, [epub, index]);
+  e.setAutoApply(run);
 
-  if (error) return <Text style={{ color: colors.accent, padding: 20 }}>{error}</Text>;
-  if (!epub || !html) return <ActivityIndicator style={{ flex: 1 }} color={colors.accent} />;
+  if (e.error) return <Text style={{ color: colors.danger, padding: 20 }}>{e.error}</Text>;
+  if (!e.epub || !e.html) return <ActivityIndicator style={{ flex: 1 }} color={colors.accent} />;
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <WebView key={index} originWhitelist={['*']} source={{ html }} style={{ backgroundColor: colors.bg }} />
-      <EpubControls index={index} total={epub.chapters.length} onPrev={() => setIndex(index - 1)} onNext={() => setIndex(index + 1)} />
+      <WebView
+        ref={ref}
+        key={e.index}
+        originWhitelist={['*']}
+        source={{ html: e.html }}
+        style={{ backgroundColor: colors.bg }}
+        onMessage={(ev) => e.onMessage(ev.nativeEvent.data)}
+      />
+      {e.range || e.markSel ? (
+        <MarkerBar range={e.range} onColor={(c) => e.applyMarker(c, run)} onErase={() => e.eraseMarker(run)} onClose={() => run('window.getSelection().removeAllRanges()')} />
+      ) : e.selection ? (
+        <HighlightBar marked={e.selection.marked} text={e.selection.text} title={props.title} author={props.author} onMark={() => e.toggleMark(run)} onShare={e.share} onClose={() => { run('window.__clear()'); e.clearSelection(); }} />
+      ) : null}
+      <EpubControls index={e.index} total={e.epub.chapters.length} onPrev={() => e.setIndex(e.index - 1)} onNext={() => e.setIndex(e.index + 1)} />
     </View>
   );
 }

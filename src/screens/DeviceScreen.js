@@ -61,9 +61,9 @@ export default function DeviceScreen() {
           <Text style={{ color: colors.text, fontWeight: '700', marginLeft: 8 }}>Como o ReadSearch funciona</Text>
         </Pressable>
 
-        <Pressable onPress={clean} style={{ marginTop: 16, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.accent, flexDirection: 'row', justifyContent: 'center' }}>
-          <Ionicons name="trash-outline" size={18} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontWeight: '700', marginLeft: 8 }}>Limpar cache e downloads</Text>
+        <Pressable onPress={clean} style={{ marginTop: 16, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.danger, flexDirection: 'row', justifyContent: 'center' }}>
+          <Ionicons name="trash-outline" size={18} color={colors.danger} />
+          <Text style={{ color: colors.danger, fontWeight: '700', marginLeft: 8 }}>Limpar cache e downloads</Text>
         </Pressable>
         <Text style={{ color: colors.muted, fontSize: 12, marginTop: 10, textAlign: 'center' }}>
           Os dados do app ficam salvos no armazenamento local (localStorage na web).

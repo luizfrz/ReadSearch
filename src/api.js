@@ -1,19 +1,52 @@
 import { cacheGet, cacheSet } from './cache';
+import { Platform } from 'react-native';
 
 // Busca em fontes abertas e gratuitas (sem chave de API):
 //  - HQ / Livros: Internet Archive
 //  - Livros: Project Gutenberg (Gutendex)
 //  - Artigos: OpenAlex
 export const KINDS = [
+  { key: 'all', label: 'Tudo' },
   { key: 'hq', label: 'HQ' },
+  { key: 'manga', label: 'Mangá' },
   { key: 'book', label: 'Livros' },
   { key: 'article', label: 'Artigos' },
 ];
 
 const IA = 'https://archive.org';
 
+const PROXY = process.env.EXPO_PUBLIC_PROXY_URL;
+
+// Na web, se o navegador bloquear por CORS e houver proxy próprio, repete a chamada por ele.
+const TIMEOUT_MS = 8000;
+
+// fetch com limite de tempo: uma fonte lenta não pode segurar a busca inteira.
+function timedFetch(url, signal) {
+  const c = new AbortController();
+  const timer = setTimeout(() => c.abort(), TIMEOUT_MS);
+  if (signal) signal.addEventListener('abort', () => c.abort());
+  return fetch(url, { signal: c.signal }).finally(() => clearTimeout(timer));
+}
+
+async function netFetch(url, signal) {
+  try {
+    return await timedFetch(url, signal);
+  } catch (e) {
+    if (Platform.OS === 'web' && PROXY && e.name !== 'AbortError') {
+      return timedFetch(`${PROXY.replace(/\/$/, '')}/fetch?url=${encodeURIComponent(url)}`, signal);
+    }
+    throw e;
+  }
+}
+
+async function getText(url, signal) {
+  const res = await netFetch(url, signal);
+  if (!res.ok) throw new Error(`Falha na busca (${res.status})`);
+  return res.text();
+}
+
 async function getJson(url, signal) {
-  const res = await fetch(url, { signal });
+  const res = await netFetch(url, signal);
   if (!res.ok) throw new Error(`Falha na busca (${res.status})`);
   return res.json();
 }
@@ -49,6 +82,7 @@ async function searchGutenberg(query, signal) {
   return data.results.map((b) => {
     const f = b.formats;
     const html = f['text/html'] || f['text/html; charset=utf-8'];
+    const epub = f['application/epub+zip'];
     return {
       id: `pg:${b.id}`,
       title: b.title,
@@ -56,9 +90,127 @@ async function searchGutenberg(query, signal) {
       cover: f['image/jpeg'],
       kind: 'book',
       source: 'Project Gutenberg',
-      resolve: html ? { type: 'web', url: html } : null,
+      resolve: epub ? { type: 'epub', url: epub } : html ? { type: 'web', url: html } : null,
     };
   }).filter((b) => b.resolve);
+}
+
+const MANGADEX = 'https://api.mangadex.org';
+const RATING = 'contentRating[]=safe&contentRating[]=suggestive';
+const LANGS = 'translatedLanguage[]=pt-br&translatedLanguage[]=en';
+
+async function searchManga(query, signal) {
+  const url = `${MANGADEX}/manga?title=${encodeURIComponent(query)}&limit=20&includes[]=cover_art&${RATING}&order[relevance]=desc`;
+  const data = await getJson(url, signal);
+  return data.data.map((m) => {
+    const titles = m.attributes.title;
+    const cover = m.relationships.find((r) => r.type === 'cover_art');
+    const file = cover && cover.attributes && cover.attributes.fileName;
+    const author = m.relationships.find((r) => r.type === 'author');
+    return {
+      id: `md:${m.id}`,
+      title: titles.en || titles['pt-br'] || Object.values(titles)[0],
+      author: author && author.attributes ? author.attributes.name : undefined,
+      cover: file ? `https://uploads.mangadex.org/covers/${m.id}/${file}.256.jpg` : undefined,
+      kind: 'manga',
+      source: 'MangaDex',
+      resolve: { type: 'manga', mangaId: m.id },
+    };
+  });
+}
+
+// Repositórios do GitHub que reúnem livros; ao abrir, o app lista os PDF/EPUB do repositório.
+async function searchGithub(query, signal) {
+  const q = `${clean(query)} (pdf OR ebook OR livro OR book) in:name,description,topics`;
+  const data = await getJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`, signal);
+  return (data.items || []).map((r) => ({
+    id: `gh:${r.full_name}`,
+    title: r.name.replace(/[-_]+/g, ' '),
+    author: r.owner.login,
+    cover: r.owner.avatar_url,
+    kind: 'book',
+    source: `GitHub · ★ ${r.stargazers_count}`,
+    resolve: { type: 'github', repo: r.full_name },
+  }));
+}
+
+// Capítulos legíveis no MangaDex (pt-br e inglês), sem os que só existem em sites externos.
+export async function getMangaChapters(mangaId) {
+  const out = [];
+  for (let offset = 0; offset < 1500; offset += 500) {
+    const d = await getJson(`${MANGADEX}/manga/${mangaId}/feed?${LANGS}&${RATING}&includeExternalUrl=0&order[chapter]=asc&limit=500&offset=${offset}`);
+    out.push(...d.data);
+    if (offset + 500 >= d.total) break;
+  }
+  const byNumber = new Map();
+  for (const c of out) {
+    const a = c.attributes;
+    if (!a.pages) continue;
+    const key = a.chapter || c.id;
+    const prev = byNumber.get(key);
+    if (!prev || (a.translatedLanguage === 'pt-br' && prev.lang !== 'pt-br')) {
+      byNumber.set(key, { id: c.id, number: a.chapter, title: a.title, lang: a.translatedLanguage, pages: a.pages });
+    }
+  }
+  return [...byNumber.values()];
+}
+
+// URLs das imagens de um capítulo (versão otimizada "data-saver" para carregar mais rápido).
+export async function getChapterPages(chapterId) {
+  const d = await getJson(`${MANGADEX}/at-home/server/${chapterId}`);
+  return d.chapter.dataSaver.map((f) => `${d.baseUrl}/data-saver/${d.chapter.hash}/${f}`);
+}
+
+// Somente arquivos .pdf de um repositório do GitHub.
+export async function listRepoFiles(fullName) {
+  const d = await getJson(`https://api.github.com/repos/${fullName}/git/trees/HEAD?recursive=1`);
+  return (d.tree || [])
+    .filter((f) => f.type === 'blob' && /\.pdf$/i.test(f.path) && f.size < 100 * 1024 * 1024)
+    .map((f) => {
+      const type = f.path.split('.').pop().toLowerCase();
+      return {
+        path: f.path,
+        name: f.path.split('/').pop().replace(/\.\w+$/, ''),
+        size: f.size,
+        type,
+        url: `https://raw.githubusercontent.com/${fullName}/HEAD/${f.path.split('/').map(encodeURIComponent).join('/')}`,
+      };
+    });
+}
+
+// Wikisource (obras em domínio público, inclusive em português). A página vira EPUB ao abrir.
+async function searchWikisource(query, signal) {
+  const url = `https://pt.wikisource.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=10&format=json&origin=*`;
+  const data = await getJson(url, signal);
+  return data.query.search.map((r) => ({
+    id: `ws:${r.pageid}`,
+    title: r.title,
+    kind: 'book',
+    source: 'Wikisource',
+    resolve: { type: 'wikisource', title: r.title },
+  }));
+}
+
+export async function getWikisourceHtml(title) {
+  const d = await getJson(`https://pt.wikisource.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&origin=*&redirects=1`);
+  return d.parse.text['*'];
+}
+
+// arXiv: artigos científicos com PDF direto.
+async function searchArxiv(query, signal) {
+  const xml = await getText(`https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(clean(query))}&max_results=10`, signal);
+  return (xml.match(/<entry>[\s\S]*?<\/entry>/g) || []).map((e) => {
+    const pick = (re) => ((e.match(re) || [])[1] || '').replace(/\s+/g, ' ').trim();
+    const id = pick(/<id>([^<]+)<\/id>/).split('/abs/')[1];
+    return {
+      id: `ax:${id}`,
+      title: pick(/<title>([\s\S]*?)<\/title>/),
+      author: [...e.matchAll(/<name>([^<]+)<\/name>/g)].slice(0, 3).map((m) => m[1]).join(', '),
+      kind: 'article',
+      source: `arXiv · ${pick(/<published>(\d{4})/)}`,
+      resolve: { type: 'pdf', url: `https://arxiv.org/pdf/${id}` },
+    };
+  });
 }
 
 async function searchArticles(query, signal) {
@@ -98,10 +250,14 @@ export async function search(query, kind, { signal, onResults, onProgress } = {}
     acc = [...acc, ...list];
     onResults && onResults(acc);
   };
-  let tasks;
-  if (kind === 'article') tasks = [searchArticles(query, signal)];
-  else if (kind === 'book') tasks = [searchGutenberg(query, signal), searchArchive(query, 'book', signal)];
-  else tasks = [searchArchive(query, 'hq', signal)];
+  // Fábricas: só as fontes do filtro escolhido são consultadas.
+  const T = {
+    hq: [() => searchArchive(query, 'hq', signal)],
+    manga: [() => searchManga(query, signal)],
+    book: [() => searchGutenberg(query, signal), () => searchArchive(query, 'book', signal), () => searchWikisource(query, signal), () => searchGithub(query, signal)],
+    article: [() => searchArticles(query, signal), () => searchArxiv(query, signal)],
+  };
+  const tasks = (kind === 'all' ? Object.values(T).flat() : T[kind]).map((f) => f());
 
   let finished = 0;
   const step = () => onProgress && onProgress(++finished, tasks.length);
@@ -122,11 +278,14 @@ export async function resolveArchive(identifier) {
   const find = (re) => files.find((f) => re.test(f.name) && !/_text\.pdf$/i.test(f.name));
   const dl = (f) => `${IA}/download/${identifier}/${encodeURIComponent(f.name)}`;
   const cbz = find(/\.(cbz|cbr)$/i);
-  if (cbz) return { type: 'cbz', url: dl(cbz) };
+  if (cbz) return { type: cbz.name.toLowerCase().endsWith('.cbr') ? 'cbr' : 'cbz', url: dl(cbz) };
   const epub = find(/\.epub$/i);
   if (epub) return { type: 'epub', url: dl(epub) };
   const pdf = find(/\.pdf$/i);
   if (pdf) return { type: 'pdf', url: dl(pdf) };
+  // Outros formatos: o app converte sozinho (FB2/DOCX/TXT no aparelho; MOBI/AZW3/DJVU no servidor).
+  const other = find(/\.(fb2|mobi|azw3|docx|djvu)$/i);
+  if (other) return { type: other.name.split('.').pop().toLowerCase(), url: dl(other) };
   const txt = files.find((f) => /_djvu\.txt$/i.test(f.name));
   if (txt) return { type: 'text', url: dl(txt) };
   return { type: 'embed', url: `${IA}/embed/${identifier}` };

@@ -1,29 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { loadEpub, renderChapter } from '../epub';
+import { useEpub } from '../useEpub';
 import EpubControls from './EpubControls';
+import HighlightBar from './HighlightBar';
+import MarkerBar from './MarkerBar';
 import { colors } from '../theme';
 
-export default function EpubView({ uri, initialPage = 0, onPage }) {
-  const [epub, setEpub] = useState(null);
-  const [index, setIndex] = useState(initialPage);
-  const [html, setHtml] = useState(null);
-  const [error, setError] = useState(null);
+export default function EpubView(props) {
+  const frame = useRef(null);
+  const e = useEpub(props);
+  const run = (js) => {
+    const w = frame.current && frame.current.contentWindow;
+    if (w) w.eval(js);
+  };
 
-  useEffect(() => { loadEpub(uri).then(setEpub).catch((e) => setError(e.message)); }, [uri]);
   useEffect(() => {
-    if (!epub) return;
-    const i = Math.min(index, epub.chapters.length - 1);
-    renderChapter(epub, i).then(setHtml).catch((e) => setError(e.message));
-    onPage && onPage(i, epub.chapters.length);
-  }, [epub, index]);
+    const on = (ev) => ev.data && ev.data.rs && e.onMessage(ev.data.rs);
+    window.addEventListener('message', on);
+    return () => window.removeEventListener('message', on);
+  });
 
-  if (error) return <Text style={{ color: colors.accent, padding: 20 }}>{error}</Text>;
-  if (!epub || !html) return <ActivityIndicator style={{ flex: 1 }} color={colors.accent} />;
+  e.setAutoApply(run);
+
+  if (e.error) return <Text style={{ color: colors.danger, padding: 20 }}>{e.error}</Text>;
+  if (!e.epub || !e.html) return <ActivityIndicator style={{ flex: 1 }} color={colors.accent} />;
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <iframe title="epub" srcDoc={html} style={{ flex: 1, width: '100%', border: 0 }} />
-      <EpubControls index={index} total={epub.chapters.length} onPrev={() => setIndex(index - 1)} onNext={() => setIndex(index + 1)} />
+      <iframe ref={frame} title="epub" srcDoc={e.html} style={{ flex: 1, width: '100%', border: 0 }} />
+      {e.range || e.markSel ? (
+        <MarkerBar range={e.range} onColor={(c) => e.applyMarker(c, run)} onErase={() => e.eraseMarker(run)} onClose={() => run('window.getSelection().removeAllRanges()')} />
+      ) : e.selection ? (
+        <HighlightBar marked={e.selection.marked} text={e.selection.text} title={props.title} author={props.author} onMark={() => e.toggleMark(run)} onShare={e.share} onClose={() => { run('window.__clear()'); e.clearSelection(); }} />
+      ) : null}
+      <EpubControls index={e.index} total={e.epub.chapters.length} onPrev={() => e.setIndex(e.index - 1)} onNext={() => e.setIndex(e.index + 1)} />
     </View>
   );
 }

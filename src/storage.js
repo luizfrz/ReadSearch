@@ -33,3 +33,9 @@ export async function updateProgress(id, page, total) {
 export async function getEntry(id) {
   return (await getLibrary()).find((x) => x.id === id) || null;
 }
+
+export async function removeManyFromLibrary(ids) {
+  const set = new Set(ids);
+  const lib = await getLibrary();
+  await AsyncStorage.setItem(KEY, JSON.stringify(lib.filter((i) => !set.has(i.id))));
+}

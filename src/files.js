@@ -30,7 +30,7 @@ export async function download(url, name, onProgress) {
   return dest;
 }
 
-async function fetchHtml(url) {
+export async function fetchText(url) {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(String(res.status));
@@ -70,14 +70,14 @@ export async function htmlToPdf(html, title) {
 
 // Transforma uma página web em PDF.
 export async function webToPdf(url, title) {
-  return htmlToPdf(cleanHtml(await fetchHtml(url), url), title);
+  return htmlToPdf(cleanHtml(await fetchText(url), url), title);
 }
 
 const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Texto puro (OCR do Internet Archive) -> PDF legível.
 export async function textToPdf(url, title) {
-  const raw = await fetchHtml(url);
+  const raw = await fetchText(url);
   const paras = raw.split(/\n\s*\n/).map((p) => `<p>${escapeHtml(p.replace(/\n/g, ' ').trim())}</p>`).join('');
   const html = `<html><head><meta charset="utf-8"><style>body{font-family:Georgia,serif;line-height:1.6;margin:32px}p{margin:0 0 12px}</style></head><body><h1>${escapeHtml(title)}</h1>${paras}</body></html>`;
   return htmlToPdf(html, title);
