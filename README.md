@@ -2,21 +2,6 @@
 
 App em React Native (Expo) para **buscar e ler HQs, livros e artigos**. Lê PDF e CBZ, converte páginas web em PDF, guarda uma biblioteca local e mostra a memória do aparelho.
 
-## Como rodar
-
-```bash
-npm install
-npm start          # abre o Expo; escaneie o QR code com o app Expo Go
-npm run web        # versão no navegador
-npm run proxy      # proxy CORS próprio (web); defina EXPO_PUBLIC_PROXY_URL (veja .env.example)
-npm run android    # exige Android SDK/emulador ou aparelho com USB debugging
-npm run ios        # exige macOS + Xcode
-```
-
-Para testar sem emulador, instale o **Expo Go** no celular (mesma rede Wi-Fi do computador) e escaneie o QR code do `npm start`.
-
-## Stack
-
 <p align="center">
   <img alt="Expo" src="https://img.shields.io/badge/Expo-SDK%2054-000020?style=for-the-badge&logo=expo&logoColor=white" />
   <img alt="React Native" src="https://img.shields.io/badge/React%20Native-0.81-20232a?style=for-the-badge&logo=react&logoColor=white" />
@@ -32,6 +17,18 @@ Para testar sem emulador, instale o **Expo Go** no celular (mesma rede Wi-Fi do 
   <img alt="Project Gutenberg" src="https://img.shields.io/badge/Project%20Gutenberg-API-8B4513?style=for-the-badge" />
   <img alt="OpenAlex" src="https://img.shields.io/badge/OpenAlex-API-E8590C?style=for-the-badge" />
 </p>
+
+Para testar sem emulador, instale o **Expo Go** no celular (mesma rede Wi-Fi do computador) e escaneie o QR code do `npm start`.
+
+
+```bash
+npm install
+npm start          # abre o Expo; escaneie o QR code com o app Expo Go
+npm run web        # versão no navegador
+npm run proxy      # proxy CORS próprio (web); defina EXPO_PUBLIC_PROXY_URL (veja .env.example)
+npm run android    # exige Android SDK/emulador ou aparelho com USB debugging
+
+```
 
 | Camada | Tecnologia | Uso |
 |---|---|---|
