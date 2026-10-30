@@ -98,8 +98,6 @@ src/
 
 ## Fluxo do app
 
-### Fluxo simplificado
-
 ```mermaid
 flowchart LR
     S["SearchScreen<br/>debounce 250 ms"] --> API["api.search()<br/>cache 6 h · timeout 8 s<br/>fontes em paralelo"]
