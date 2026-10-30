@@ -1,5 +1,7 @@
 import { cacheGet, cacheSet } from './cache';
 import { Platform } from 'react-native';
+import { detectIntent, rank } from './intent';
+import { isOpenable, readableFormats } from './formats';
 
 // Busca em fontes abertas e gratuitas (sem chave de API):
 //  - HQ / Livros: Internet Archive
@@ -56,25 +58,30 @@ const clean = (q) => q.replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, ' ').replace(/\s+/g,
 
 async function searchArchive(query, kind, signal) {
   // Busca só em título/autor: ~4x mais rápida que a busca em texto completo.
-  const t = clean(query);
+  const t = clean(query).split(' ').join(' AND ');
   const scope =
     kind === 'hq'
       ? '(subject:comics OR collection:comics)'
       : 'NOT subject:comics';
-  const q = `(title:(${t}) OR creator:(${t})) AND ${scope} AND mediatype:texts`;
+  const q = `(title:(${t}) OR creator:(${t})) AND ${scope} AND mediatype:texts AND NOT access-restricted-item:true`;
   const url =
     `${IA}/advancedsearch.php?q=${encodeURIComponent(q)}` +
-    '&fl[]=identifier&fl[]=title&fl[]=creator&rows=20&output=json&sort[]=downloads+desc';
+    '&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=format&rows=40&output=json&sort[]=downloads+desc';
   const data = await getJson(url, signal);
-  return data.response.docs.map((d) => ({
-    id: `ia:${d.identifier}`,
-    title: d.title,
-    author: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator,
-    cover: `${IA}/services/img/${d.identifier}`,
-    kind,
-    source: 'Internet Archive',
-    resolve: { type: 'ia', identifier: d.identifier },
-  }));
+  // Só entram itens com ao menos um formato que o app abre (descarta empréstimos criptografados etc.).
+  return data.response.docs
+    .map((d) => ({ d, formats: readableFormats(d.format) }))
+    .filter(({ formats }) => formats.length)
+    .map(({ d, formats }) => ({
+      id: `ia:${d.identifier}`,
+      title: d.title,
+      author: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator,
+      cover: `${IA}/services/img/${d.identifier}`,
+      kind,
+      source: 'Internet Archive',
+      formats,
+      resolve: { type: 'ia', identifier: d.identifier },
+    }));
 }
 
 async function searchGutenberg(query, signal) {
@@ -120,18 +127,52 @@ async function searchManga(query, signal) {
 }
 
 // Repositórios do GitHub que reúnem livros; ao abrir, o app lista os PDF/EPUB do repositório.
+const GH_TOKEN = process.env.EXPO_PUBLIC_GITHUB_TOKEN;
+
+// GitHub sem token permite só 60 chamadas/hora: com EXPO_PUBLIC_GITHUB_TOKEN o limite sobe para 5000.
+async function ghJson(url, signal) {
+  const headers = { Accept: 'application/vnd.github+json', ...(GH_TOKEN ? { Authorization: `Bearer ${GH_TOKEN}` } : {}) };
+  const res = await fetch(url, { signal, headers });
+  if (!res.ok) throw new Error(`GitHub (${res.status})`);
+  return res.json();
+}
+
+// Quantos PDFs (de até 100 MB) o repositório tem; o resultado fica em cache para não gastar a cota.
+async function countRepoPdfs(fullName, signal) {
+  const key = `v2:ghpdf:${fullName}`;
+  const cached = await cacheGet(key);
+  if (cached != null) return cached;
+  const d = await ghJson(`https://api.github.com/repos/${fullName}/git/trees/HEAD?recursive=1`, signal);
+  const n = (d.tree || []).filter((f) => f.type === 'blob' && /\.pdf$/i.test(f.path) && f.size < 100 * 1024 * 1024).length;
+  cacheSet(key, n);
+  return n;
+}
+
+// Só aparecem repositórios que realmente contêm ao menos um .pdf. Se não der para verificar
+// (limite da API, erro de rede), o repositório fica de fora em vez de aparecer sem garantia.
 async function searchGithub(query, signal) {
   const q = `${clean(query)} (pdf OR ebook OR livro OR book) in:name,description,topics`;
-  const data = await getJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`, signal);
-  return (data.items || []).map((r) => ({
-    id: `gh:${r.full_name}`,
-    title: r.name.replace(/[-_]+/g, ' '),
-    author: r.owner.login,
-    cover: r.owner.avatar_url,
-    kind: 'book',
-    source: `GitHub · ★ ${r.stargazers_count}`,
-    resolve: { type: 'github', repo: r.full_name },
+  const data = await ghJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`, signal);
+  const checked = await Promise.all((data.items || []).map(async (r) => {
+    try {
+      return { r, pdfs: await countRepoPdfs(r.full_name, signal) };
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      return { r, pdfs: 0 };
+    }
   }));
+  return checked
+    .filter(({ pdfs }) => pdfs > 0)
+    .map(({ r, pdfs }) => ({
+      id: `gh:${r.full_name}`,
+      title: r.name.replace(/[-_]+/g, ' '),
+      author: r.owner.login,
+      cover: r.owner.avatar_url,
+      kind: 'book',
+      source: `GitHub · ${pdfs} ${pdfs === 1 ? 'PDF' : 'PDFs'}`,
+      formats: ['pdf'],
+      resolve: { type: 'github', repo: r.full_name },
+    }));
 }
 
 // Capítulos legíveis no MangaDex (pt-br e inglês), sem os que só existem em sites externos.
@@ -163,7 +204,7 @@ export async function getChapterPages(chapterId) {
 
 // Somente arquivos .pdf de um repositório do GitHub.
 export async function listRepoFiles(fullName) {
-  const d = await getJson(`https://api.github.com/repos/${fullName}/git/trees/HEAD?recursive=1`);
+  const d = await ghJson(`https://api.github.com/repos/${fullName}/git/trees/HEAD?recursive=1`);
   return (d.tree || [])
     .filter((f) => f.type === 'blob' && /\.pdf$/i.test(f.path) && f.size < 100 * 1024 * 1024)
     .map((f) => {
@@ -236,10 +277,10 @@ async function searchArticles(query, signal) {
     .filter((a) => a.title && a.resolve);
 }
 
-// Busca com cache e entrega progressiva: `onResults` recebe os resultados assim que
-// cada fonte responde, sem esperar pela mais lenta. `signal` cancela buscas antigas.
-export async function search(query, kind, { signal, onResults, onProgress } = {}) {
-  const key = `${kind}:${query.toLowerCase()}`;
+// Consulta as fontes do tipo `kind` ('all' = todas) e entrega os resultados ordenados por
+// relevância assim que cada fonte responde, sem esperar pela mais lenta.
+async function runSearch(q, kind, { signal, onResults, onProgress }) {
+  const key = `v2:${kind}:${q.toLowerCase()}`;
   const cached = await cacheGet(key);
   if (cached) {
     onResults && onResults(cached);
@@ -247,15 +288,15 @@ export async function search(query, kind, { signal, onResults, onProgress } = {}
   }
   let acc = [];
   const push = (list) => {
-    acc = [...acc, ...list];
+    acc = rank([...acc, ...list.filter(isOpenable)], q, null);
     onResults && onResults(acc);
   };
   // Fábricas: só as fontes do filtro escolhido são consultadas.
   const T = {
-    hq: [() => searchArchive(query, 'hq', signal)],
-    manga: [() => searchManga(query, signal)],
-    book: [() => searchGutenberg(query, signal), () => searchArchive(query, 'book', signal), () => searchWikisource(query, signal), () => searchGithub(query, signal)],
-    article: [() => searchArticles(query, signal), () => searchArxiv(query, signal)],
+    hq: [() => searchArchive(q, 'hq', signal)],
+    manga: [() => searchManga(q, signal)],
+    book: [() => searchGutenberg(q, signal), () => searchArchive(q, 'book', signal), () => searchWikisource(q, signal), () => searchGithub(q, signal)],
+    article: [() => searchArticles(q, signal), () => searchArxiv(q, signal)],
   };
   const tasks = (kind === 'all' ? Object.values(T).flat() : T[kind]).map((f) => f());
 
@@ -270,12 +311,28 @@ export async function search(query, kind, { signal, onResults, onProgress } = {}
   return acc;
 }
 
+// Em "Tudo", entende o que a pessoa procura: palavra-chave ("livro", "mangá", "artigo"…)
+// restringe o tipo; senão busca em tudo e o tipo do melhor resultado vira a intenção (`onIntent`).
+// Se a busca restrita não achar nada, tenta de novo em todas as categorias.
+export async function search(query, kind, opts = {}) {
+  const { onIntent } = opts;
+  if (kind !== 'all') return runSearch(query, kind, opts);
+
+  const intent = detectIntent(query);
+  const kinds = intent.explicit ? intent.kind : 'all';
+  onIntent && onIntent({ kind: intent.kind, query: intent.query });
+  let out = await runSearch(intent.query, kinds, opts);
+  if (!out.length && intent.explicit) out = await runSearch(query, 'all', opts);
+  if (out.length && onIntent) onIntent({ kind: out[0].kind, query: intent.query, best: out[0] });
+  return out;
+}
+
 // Descobre o melhor formato de um item do Internet Archive.
 // Ordem: CBZ > EPUB > PDF > texto OCR (vira PDF) > leitor online incorporado.
 export async function resolveArchive(identifier) {
   const meta = await getJson(`${IA}/metadata/${identifier}`);
   const files = meta.files || [];
-  const find = (re) => files.find((f) => re.test(f.name) && !/_text\.pdf$/i.test(f.name));
+  const find = (re) => files.find((f) => re.test(f.name) && !/_text\.pdf$/i.test(f.name) && !/encrypted|lcp/i.test(f.format || '') && !/_(lcp|encrypted)/i.test(f.name));
   const dl = (f) => `${IA}/download/${identifier}/${encodeURIComponent(f.name)}`;
   const cbz = find(/\.(cbz|cbr)$/i);
   if (cbz) return { type: cbz.name.toLowerCase().endsWith('.cbr') ? 'cbr' : 'cbz', url: dl(cbz) };

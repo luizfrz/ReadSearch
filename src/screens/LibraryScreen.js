@@ -37,7 +37,7 @@ export default function LibraryScreen({ navigation }) {
     let uri = f.uri;
     if (Platform.OS !== 'web') {
       uri = FileSystem.documentDirectory + Date.now() + '_' + f.name.replace(/\s+/g, '_');
-      await FileSystem.copyAsync({ from: f.uri, to: uri });
+      await FileSystem.moveAsync({ from: f.uri, to: uri }); // já está em cache: mover é instantâneo, sem recopiar
     }
     navigation.navigate('Reader', {
       local: { id: `local:${f.name}:${f.size}`, title: f.name.replace(/\.\w+$/, ''), uri, ext, kind: ['cbz', 'cbr', 'djvu'].includes(ext) ? 'hq' : 'book' },

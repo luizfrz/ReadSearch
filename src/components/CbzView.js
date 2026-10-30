@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, PanResponder, Text, useWindowDimensions, View } from 'react-native';
+import { captureToFile } from '../share';
 import JSZip from 'jszip';
 import { readBase64 } from '../files';
 import { addMarker, getMarkers, removeMarker } from '../highlights';
@@ -10,7 +11,7 @@ const MIME = { png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
 
 // Página + camada de marca-texto: com o destaque ligado, arraste para pintar uma área da página;
 // toque (sem arrastar) numa área pintada para apagá-la.
-function Page({ zip, name, index, width, height, rects, drawing, color, onAdd, onRemove }) {
+function Page({ zip, name, index, width, height, rects, drawing, color, onAdd, onRemove, shotRef }) {
   const [src, setSrc] = useState(null);
   const [draft, setDraft] = useState(null);
   const start = useRef(null);
@@ -42,7 +43,7 @@ function Page({ zip, name, index, width, height, rects, drawing, color, onAdd, o
   ).current;
 
   return (
-    <View style={{ width, height, justifyContent: 'center' }} {...pan.panHandlers}>
+    <View ref={shotRef} collapsable={false} style={{ width, height, justifyContent: 'center' }} {...pan.panHandlers}>
       {src ? <Image source={{ uri: src }} style={{ width, height }} resizeMode="contain" /> : <ActivityIndicator color={colors.accent} />}
       {rects.map((r) => (
         <View key={r.id} pointerEvents="none" style={{ position: 'absolute', left: r.x * width, top: r.y * height, width: r.w * width, height: r.h * height, backgroundColor: r.color, borderRadius: 3 }} />
@@ -61,13 +62,17 @@ export default function CbzView({ uri, initialPage = 0, onPage, bookId, marker, 
   const [current, setCurrent] = useState(initialPage);
   const [marks, setMarks] = useState([]);
   const ref = useRef(null);
+  const pageRefs = useRef({});
   const key = `cbz:${bookId}`;
   const drawing = !!(marker && marker.on);
 
   useEffect(() => { getMarkers(key).then(setMarks); }, [key]);
 
   useEffect(() => {
-    if (controlRef) controlRef.current = { ...controlRef.current, goTo: (n) => { ref.current && ref.current.scrollToIndex({ index: n, animated: false }); setCurrent(n); onPage && onPage(n, state.names.length); } };
+    if (controlRef) controlRef.current = { ...controlRef.current, goTo: (n) => { ref.current && ref.current.scrollToIndex({ index: n, animated: false }); setCurrent(n); onPage && onPage(n, state.names.length); },
+      // Imagem só da página n (com os destaques), sem a interface do leitor.
+      exportPage: (n) => captureToFile(pageRefs.current[n]),
+    };
   });
 
   useEffect(() => {
@@ -131,6 +136,7 @@ export default function CbzView({ uri, initialPage = 0, onPage, bookId, marker, 
             color={marker ? marker.color : '#ffd16699'}
             onAdd={add}
             onRemove={remove}
+            shotRef={(r) => { pageRefs.current[index] = r; }}
           />
         )}
       />

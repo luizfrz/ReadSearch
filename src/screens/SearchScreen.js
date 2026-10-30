@@ -19,6 +19,7 @@ export default function SearchScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recents, setRecents] = useState([]);
+  const [intent, setIntent] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 1 });
   const ctrl = useRef(null);
 
@@ -27,15 +28,16 @@ export default function SearchScreen({ navigation }) {
   // Busca automática com debounce; cada nova digitação cancela a requisição anterior.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) { setResults(null); setLoading(false); setError(null); return; }
+    if (q.length < 2) { setIntent(null); setResults(null); setLoading(false); setError(null); return; }
     const t = setTimeout(async () => {
       ctrl.current && ctrl.current.abort();
       const c = (ctrl.current = new AbortController());
       setLoading(true);
       setError(null);
+      setIntent(null);
       setProgress({ done: 0, total: 1 });
       try {
-        const out = await search(q, kind, { signal: c.signal, onResults: (r) => !c.signal.aborted && setResults(r), onProgress: (done, total) => !c.signal.aborted && setProgress({ done, total }) });
+        const out = await search(q, kind, { signal: c.signal, onResults: (r) => !c.signal.aborted && setResults(r), onIntent: (i) => !c.signal.aborted && setIntent(i), onProgress: (done, total) => !c.signal.aborted && setProgress({ done, total }) });
         if (!c.signal.aborted) {
           setResults(out);
           addRecent(q).then(setRecents);
@@ -90,7 +92,15 @@ export default function SearchScreen({ navigation }) {
           );
         })}
       </View>
+      <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 8 }}>Mostrando só o que o app consegue abrir (PDF, EPUB, CBZ, MOBI, DJVU, TXT…).</Text>
       <SearchProgress active={loading} done={progress.done} total={progress.total} label={`Buscando ${KINDS.find((k) => k.key === kind).label.toLowerCase()}…`} />
+      {intent && intent.kind && kind === 'all' ? (
+        <Text style={{ color: colors.muted, marginBottom: 10 }}>
+          {intent.best ? 'Melhor resultado: ' : 'Procurando '}
+          <Text style={{ color: colors.accent, fontWeight: '700' }}>{KINDS.find((k) => k.key === intent.kind).label}</Text>
+          {intent.best ? ` · ${intent.best.title}` : ` · "${intent.query}"`}
+        </Text>
+      ) : null}
       {error ? <Text style={{ color: colors.danger, marginBottom: 10 }}>{error}</Text> : null}
     </View>
   );
@@ -109,7 +119,24 @@ export default function SearchScreen({ navigation }) {
         </View>
       );
     }
-    if (results) return <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 30 }}>Nada encontrado para "{query}".</Text>;
+    if (results && !error) {
+      return (
+        <View style={{ alignItems: 'center', marginTop: 30, paddingHorizontal: 20 }}>
+          <Ionicons name="search-outline" size={44} color={colors.muted} />
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, textAlign: 'center', marginTop: 12 }}>
+            Não consegui localizar nada relacionado a "{query.trim()}".
+          </Text>
+          <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 6 }}>
+            Confira a grafia ou tente só o título ou o nome do autor.
+          </Text>
+          {kind !== 'all' ? (
+            <Pressable onPress={() => setKind('all')} style={{ marginTop: 14, backgroundColor: colors.card, borderRadius: 16, paddingVertical: 9, paddingHorizontal: 18, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ color: colors.accent, fontWeight: '700' }}>Buscar em Tudo</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
     return (
       <View>
         {recents.length ? (

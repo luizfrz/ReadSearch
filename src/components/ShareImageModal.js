@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { captureAndShare } from '../share';
+import { captureAndShare, captureToFile, shareToWhatsApp } from '../share';
 import { colors } from '../theme';
 
 const THEMES = [
@@ -20,14 +20,17 @@ export default function ShareImageModal({ visible, text, title, author, onClose 
   const quote = (text || '').length > 600 ? `${text.slice(0, 600)}…` : text || '';
   const size = quote.length < 120 ? 26 : quote.length < 300 ? 21 : 16;
 
-  const share = async () => {
+  const run = async (fn) => {
     setBusy(true);
     try {
-      await captureAndShare(card, { width: 1080, height: 1920 });
+      await fn();
     } finally {
       setBusy(false);
     }
   };
+  const size1080 = { width: 1080, height: 1920 };
+  const toStatus = () => run(async () => shareToWhatsApp(await captureToFile(card, size1080), 'trecho.png', 'image/png'));
+  const toOthers = () => run(() => captureAndShare(card, size1080));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -52,17 +55,20 @@ export default function ShareImageModal({ visible, text, title, author, onClose 
         </View>
 
         <Text style={{ color: colors.muted, fontSize: 12, marginTop: 12, textAlign: 'center', paddingHorizontal: 30 }}>
-          Toque em compartilhar e escolha WhatsApp → Status (ou Instagram, Telegram…).
+          No WhatsApp, escolha "Meu status" no topo da lista de contatos.
         </Text>
 
         <View style={{ flexDirection: 'row', marginTop: 'auto', paddingHorizontal: 20, width: '100%' }}>
           <Pressable onPress={onClose} style={{ flex: 1, padding: 14, alignItems: 'center' }}>
             <Text style={{ color: colors.muted, fontWeight: '700' }}>Fechar</Text>
           </Pressable>
-          <Pressable onPress={share} disabled={busy} style={{ flex: 2 }}>
-            <LinearGradient colors={[colors.accent, colors.accent2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ padding: 14, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="share-social" size={20} color="#fff" />}
-              <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 8 }}>Compartilhar imagem</Text>
+          <Pressable onPress={toOthers} disabled={busy} style={{ padding: 14, alignItems: 'center' }}>
+            <Ionicons name="share-social-outline" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={toStatus} disabled={busy} style={{ flex: 2 }}>
+            <LinearGradient colors={['#25d366', '#128c7e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ padding: 14, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+              {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="logo-whatsapp" size={20} color="#fff" />}
+              <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 8 }}>Enviar para o Status</Text>
             </LinearGradient>
           </Pressable>
         </View>

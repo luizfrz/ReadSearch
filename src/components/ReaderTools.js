@@ -25,6 +25,7 @@ export default function ReaderTools({ can, state, on }) {
         <View>
           {can.print ? tool('camera', 'Tirar print', on.print) : null}
           {can.mark ? tool(state.pageMarked ? 'bookmark' : 'bookmark-outline', state.pageMarked ? 'Desmarcar página' : 'Marcar página', on.mark, state.pageMarked, '#ffd166') : null}
+          {can.status ? tool('logo-whatsapp', 'Status (só esta página)', on.status, false, '#3ddc97') : null}
           {can.color ? (
             <View>
               {tool('brush', 'Destacar texto', on.toggleColor, state.colorOn)}

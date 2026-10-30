@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as FileSystem from 'expo-file-system/legacy';
 import { fileSize, readChunkBase64 } from '../files';
 import { addMarker, getMarkers, removeMarker } from '../highlights';
 import MarkerBar from './MarkerBar';
@@ -15,6 +16,7 @@ export default function PdfView({ uri, initialPage = 0, onPage, bookId, marker, 
   const sending = useRef(false);
   const [range, setRange] = useState(null);
   const [markSel, setMarkSel] = useState(null);
+  const exporting = useRef(null);
   const markerRef = useRef(marker);
   markerRef.current = marker;
   const key = `pdf:${bookId}`;
@@ -22,7 +24,14 @@ export default function PdfView({ uri, initialPage = 0, onPage, bookId, marker, 
   const run = (js) => ref.current && ref.current.injectJavaScript(`${js};true;`);
 
   useEffect(() => {
-    if (controlRef) controlRef.current = { ...controlRef.current, goTo: (n) => run(`window.__goto(${n})`) };
+    if (controlRef) {
+      controlRef.current = {
+        ...controlRef.current,
+        goTo: (n) => run(`window.__goto(${n})`),
+        // Imagem só da página n, com os destaques (para enviar ao Status).
+        exportPage: (n) => new Promise((resolve) => { exporting.current = resolve; run(`window.__export(${n})`); }),
+      };
+    }
   }, []);
 
   // O arquivo é enviado ao visor em pedaços; nunca fica inteiro em memória no lado React Native.
@@ -49,6 +58,13 @@ export default function PdfView({ uri, initialPage = 0, onPage, bookId, marker, 
     const m = JSON.parse(e.nativeEvent.data);
     if (m.t === 'ready') send();
     else if (m.t === 'page') onPage && onPage(m.page, m.total);
+    else if (m.t === 'exported') {
+      const dest = `${FileSystem.cacheDirectory}pagina_${m.page + 1}_${Date.now()}.jpg`;
+      FileSystem.writeAsStringAsync(dest, m.data, { encoding: FileSystem.EncodingType.Base64 }).then(() => {
+        exporting.current && exporting.current(dest);
+        exporting.current = null;
+      });
+    }
     else if (m.t === 'range') {
       if (controlRef) controlRef.current.selection = m.text;
       // Com o marca-texto ligado, o trecho selecionado já recebe a cor escolhida.

@@ -7,7 +7,7 @@ import { fmtBytes } from '../device';
 
 // Tela de carregamento do leitor. `progress` de 0 a 1 mostra barra real (download);
 // `null` mostra barra indeterminada (etapas sem tamanho conhecido).
-export default function LoadingProgress({ title, status, progress, written, total }) {
+export default function LoadingProgress({ title, status, progress, written, total, phase }) {
   const value = useRef(new Animated.Value(0)).current;
   const sweep = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -38,7 +38,7 @@ export default function LoadingProgress({ title, status, progress, written, tota
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
       <Animated.View style={{ transform: [{ scale }], marginBottom: 24 }}>
         <LinearGradient colors={[colors.accent, colors.accent2]} style={{ width: 84, height: 84, borderRadius: 24, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={determinate ? 'cloud-download' : 'book'} size={42} color="#fff" />
+          <Ionicons name={determinate ? (phase === 'upload' ? 'cloud-upload' : 'cloud-download') : 'book'} size={42} color="#fff" />
         </LinearGradient>
       </Animated.View>
 

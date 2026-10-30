@@ -193,6 +193,7 @@ O botão redondo com ícone de ferramenta, no canto esquerdo do leitor, abre/fec
 | Ferramenta | PDF | EPUB | HQ (CBZ) | Mangá | Online (IA) |
 |---|---|---|---|---|---|
 | Tirar print (captura a tela e compartilha) | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Status do WhatsApp (marca e envia só a página atual) | ✔ | ✔ (tela atual) | ✔ | ✔ | – |
 | Marcar página (capítulo, no EPUB) | ✔ | ✔ | ✔ | marcação própria | – |
 | Destacar texto com cor | selecionar texto | selecionar texto | arrastar sobre a página | – | – |
 | Notas de texto + lista de marcadores | ✔ | ✔ | ✔ | – | – |
@@ -200,6 +201,8 @@ O botão redondo com ícone de ferramenta, no canto esquerdo do leitor, abre/fec
 - **Destacar texto:** ligue a ferramenta e escolha a cor; ao selecionar um trecho (PDF/EPUB) ele já recebe a cor. Com a ferramenta desligada, a barra de cores aparece depois de selecionar. Na HQ, com o destaque ligado, arraste para pintar uma área e toque nela para apagar.
 - **Notas:** *Notas e marcadores* abre um painel para escrever notas (guarda o trecho selecionado como citação), ver as páginas marcadas e pular para elas. Notas e marcadores ficam salvos por obra.
 - No PDF aberto na web (visor do navegador) só o print está disponível.
+
+- **Status do WhatsApp:** a ferramenta *Status (só esta página)* marca a página atual e envia apenas ela como imagem, sem a interface do leitor. No PDF a página é renderizada à parte (com os destaques desenhados); na HQ captura-se só a página; no EPUB, a tela atual. No Android o app abre o WhatsApp direto com a imagem (escolha *Meu status* no topo); o WhatsApp não permite pular essa escolha. Sem WhatsApp, no iOS ou na web, abre o compartilhamento comum.
 
 ## Conversão automática de formatos
 O app só lê **PDF, EPUB e CBZ**; todo o resto é convertido ao abrir (e o resultado fica salvo, sem reconverter).

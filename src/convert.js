@@ -101,23 +101,45 @@ async function localToEpub({ uri, ext, id, title, author }) {
 
 // ---------- servidor de conversão (MOBI, AZW3, DJVU, CBR real...) ----------
 
-async function serverConvert({ uri, ext, id }) {
+// Upload na web com progresso (fetch não expõe progresso de envio).
+function xhrUpload(url, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.responseType = 'blob';
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total, e.loaded, e.total);
+    xhr.onload = () => (xhr.status < 300 ? resolve(xhr.response) : reject(new Error(`Conversão falhou (${xhr.status})`)));
+    xhr.onerror = () => reject(new Error('Falha de rede ao enviar o arquivo.'));
+    xhr.send(blob);
+  });
+}
+
+// `onProgress(phase, value, written, total)`: phase 'upload' (envio) ou 'download' (arquivo convertido).
+async function serverConvert({ uri, ext, id }, onProgress = () => {}) {
   if (!PROXY) {
     throw new Error(`O formato ${ext.toUpperCase()} precisa do servidor de conversão. Rode "npm run proxy" (com Calibre/djvulibre/7z instalados) e defina EXPO_PUBLIC_PROXY_URL.`);
   }
   const to = SERVER_CONVERT[ext];
   const url = `${PROXY}/convert?from=${ext}&to=${to}`;
+  const up = (v, w, t) => onProgress('upload', v, w, t);
+  up(0, 0, 0);
   if (Platform.OS === 'web') {
-    const res = await fetch(url, { method: 'POST', body: await (await fetch(uri)).blob() });
-    if (!res.ok) throw new Error(await res.text());
-    return { uri: URL.createObjectURL(await res.blob()), type: to };
+    const out = await xhrUpload(url, await (await fetch(uri)).blob(), up);
+    return { uri: URL.createObjectURL(out), type: to };
   }
-  const up = await FileSystem.uploadAsync(url, uri, { httpMethod: 'POST', uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT });
-  if (up.status >= 300) throw new Error(JSON.parse(up.body || '{}').error || `Conversão falhou (${up.status})`);
-  const { id: outId } = JSON.parse(up.body);
+  const task = FileSystem.createUploadTask(url, uri, { httpMethod: 'POST', uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT },
+    ({ totalBytesSent, totalBytesExpectedToSend }) => {
+      if (totalBytesExpectedToSend > 0) up(totalBytesSent / totalBytesExpectedToSend, totalBytesSent, totalBytesExpectedToSend);
+    });
+  const res = await task.uploadAsync();
+  if (!res || res.status >= 300) throw new Error((res && JSON.parse(res.body || '{}').error) || `Conversão falhou (${res ? res.status : 'sem resposta'})`);
+  const { id: outId } = JSON.parse(res.body);
   const dest = FileSystem.documentDirectory + id.replace(/[^a-z0-9]+/gi, '_').slice(0, 80) + '.' + to;
-  const dl = await FileSystem.downloadAsync(`${PROXY}/out/${outId}`, dest);
-  if (dl.status >= 300) throw new Error('Não foi possível baixar o arquivo convertido.');
+  const dl = FileSystem.createDownloadResumable(`${PROXY}/out/${outId}`, dest, {}, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+    if (totalBytesExpectedToWrite > 0) onProgress('download', totalBytesWritten / totalBytesExpectedToWrite, totalBytesWritten, totalBytesExpectedToWrite);
+  });
+  const out = await dl.downloadAsync();
+  if (!out || out.status >= 300) throw new Error('Não foi possível baixar o arquivo convertido.');
   return { uri: dest, type: to };
 }
 
@@ -132,7 +154,7 @@ async function isRealRar(uri) {
 }
 
 // Garante que o arquivo esteja num formato que o app lê. Retorna { uri, type }.
-export async function ensureReadable({ uri, ext, id, title, author }, setStatus = () => {}) {
+export async function ensureReadable({ uri, ext, id, title, author }, setStatus = () => {}, onProgress = () => {}) {
   if (NATIVE.includes(ext)) return { uri, type: ext };
   if (ext === 'cbr' && !(await isRealRar(uri))) return { uri, type: 'cbz' };
   if (LOCAL_CONVERT.includes(ext)) {
@@ -141,7 +163,7 @@ export async function ensureReadable({ uri, ext, id, title, author }, setStatus 
   }
   if (SERVER_CONVERT[ext]) {
     setStatus(`Convertendo ${ext.toUpperCase()} para ${SERVER_CONVERT[ext].toUpperCase()}…`);
-    return serverConvert({ uri, ext, id });
+    return serverConvert({ uri, ext, id }, onProgress);
   }
   throw new Error(`Formato .${ext} não suportado.`);
 }

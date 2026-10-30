@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, Text, View } from 'react-native';
 import { getWikisourceHtml, resolveArchive } from '../api';
 import { download, fetchText, webToPdf } from '../files';
 import { ensureReadable, htmlToEpub, textToEpub } from '../convert';
-import { captureAndShare } from '../share';
+import { captureAndShare, captureToFile, shareToWhatsApp } from '../share';
 import { getEntry, saveToLibrary, updateProgress } from '../storage';
 import { MARKER_COLORS, addNote, getNotes, getPageMarks, removeNote, togglePageMark } from '../highlights';
 import ReaderTools from '../components/ReaderTools';
@@ -21,10 +21,12 @@ import { colors } from '../theme';
 // Recebe `item` (resultado de busca) ou `entry` (já na biblioteca / arquivo local).
 async function open({ item, entry, local }, setStatus, setProgress) {
   if (entry) return entry;
+  // Envio/retorno do servidor de conversão, com barra de progresso.
+  const onConv = (phase, value, written, total) => setProgress(value >= 1 && phase === 'download' ? null : { phase, value, written, total });
 
   // Arquivo importado do aparelho: converte se o formato não for nativo.
   if (local) {
-    const r = await ensureReadable({ uri: local.uri, ext: local.ext, id: local.id, title: local.title }, setStatus);
+    const r = await ensureReadable({ uri: local.uri, ext: local.ext, id: local.id, title: local.title }, setStatus, onConv);
     return { id: local.id, title: local.title, localUri: r.uri, fileType: r.type, kind: local.kind, source: 'Arquivo local' };
   }
 
@@ -60,11 +62,11 @@ async function open({ item, entry, local }, setStatus, setProgress) {
   }
 
   setStatus('Baixando…');
-  setProgress({ value: 0, written: 0, total: 0 });
-  const downloaded = await download(src.url, `${item.id}.${src.type}`, (value, written, total) => setProgress({ value, written, total }));
+  setProgress({ phase: 'download', value: 0, written: 0, total: 0 });
+  const downloaded = await download(src.url, `${item.id}.${src.type}`, (value, written, total) => setProgress({ phase: 'download', value, written, total }));
   setProgress(null);
   // Qualquer formato suportado vira PDF, EPUB ou CBZ, que são os que o app lê.
-  const ready = await ensureReadable({ uri: downloaded, ext: src.type, id: item.id, title: item.title, author: item.author }, setStatus);
+  const ready = await ensureReadable({ uri: downloaded, ext: src.type, id: item.id, title: item.title, author: item.author }, setStatus, onConv);
   return { ...base, localUri: ready.uri, fileType: ready.type };
 }
 
@@ -128,11 +130,13 @@ export default function ReaderScreen({ route, navigation }) {
     );
   }
   if (!doc) {
-    const title = route.params.item ? route.params.item.title : route.params.entry.title;
+    const { item, entry, local } = route.params;
+    const title = (item || entry || local || {}).title;
     return (
       <LoadingProgress
         title={title}
-        status={progress ? 'Baixando arquivo…' : status}
+        status={progress ? (progress.phase === 'upload' ? 'Enviando arquivo para conversão…' : 'Baixando arquivo…') : status}
+        phase={progress ? progress.phase : null}
         progress={progress ? progress.value : null}
         written={progress && progress.written}
         total={progress && progress.total}
@@ -178,13 +182,24 @@ export default function ReaderScreen({ route, navigation }) {
 
   // O que cada tipo de arquivo permite (mangá tem marcação própria de páginas; embed/PDF web só print).
   const full = type === 'cbz' || type === 'epub' || (type === 'pdf' && Platform.OS !== 'web');
-  const can = { print: true, mark: full, color: full, notes: full };
+  const can = { print: true, mark: full, color: full, notes: full, status: full };
   const page = pos ? pos.page : 0;
   const pageMarked = pageMarks.includes(page);
 
   const tools = {
     print: () => captureAndShare(shot).catch(() => {}),
     mark: async () => setPageMarks(await togglePageMark(doc.id, page)),
+    // Status do WhatsApp: marca a página atual e envia só ela como imagem (sem a interface do leitor).
+    status: async () => {
+      try {
+        if (!pageMarked) setPageMarks(await togglePageMark(doc.id, page));
+        const exporter = controlRef.current.exportPage;
+        const uri = exporter ? await exporter(page) : await captureToFile(shot);
+        await shareToWhatsApp(uri, `pagina_${page + 1}.jpg`, uri.endsWith('.png') ? 'image/png' : 'image/jpeg');
+      } catch (e) {
+        Alert.alert('Não foi possível enviar', e.message);
+      }
+    },
     toggleColor: () => setMarkerOn(!markerOn),
     pickColor: setColor,
     notes: () => { setQuote(controlRef.current.selection || ''); setPanel(true); },

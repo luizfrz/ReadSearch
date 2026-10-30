@@ -23,7 +23,7 @@ html,body{margin:0;background:#050d24}
 <script>
 var WORKER_SRC=${esc(JSON.stringify(PDF_WORKER))};
 pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(new Blob([WORKER_SRC],{type:'text/javascript'}));
-var buf=null,off=0,pdf=null,pages=[],ratio=1.4,startPage=0,pending=[],st=null;
+var buf=null,off=0,pdf=null,pages=[],ratio=1.4,startPage=0,pending=[],st=null,allMarks=[];
 function post(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o))}
 window.__start=function(size,page){buf=new Uint8Array(size);off=0;startPage=page||0};
 window.__chunk=function(b64){var r=atob(b64);for(var i=0;i<r.length;i++)buf[off+i]=r.charCodeAt(i);off+=r.length};
@@ -83,6 +83,7 @@ function report(){clearTimeout(st);st=setTimeout(function(){
 
 // ---- marca-texto: retângulos normalizados (0..1) dentro da página ----
 function addMark(m){
+  if(!allMarks.some(function(x){return x.id===m.id}))allMarks.push(m);
   var pg=pages[m.page];if(!pg)return;
   m.rects.forEach(function(r){
     var d=document.createElement('div');d.className='hlr';d.setAttribute('data-m',m.id);
@@ -92,7 +93,22 @@ function addMark(m){
 }
 window.__marks=function(list){if(pages.length)list.forEach(addMark);else pending=pending.concat(list)};
 window.__addmark=function(m){addMark(m);window.getSelection().removeAllRanges()};
-window.__unmark=function(id){document.querySelectorAll('.hlr[data-m="'+id+'"]').forEach(function(d){d.remove()})};
+// Renderiza só a página n (com os destaques desenhados) e devolve em JPEG base64.
+window.__export=function(n){
+  pdf.getPage(n+1).then(function(p){
+    var base=p.getViewport({scale:1}),s=Math.min(2.5,1600/base.width),vp=p.getViewport({scale:s});
+    var c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;var ctx=c.getContext('2d');
+    return p.render({canvasContext:ctx,viewport:vp}).promise.then(function(){
+      allMarks.filter(function(m){return m.page===n}).forEach(function(m){
+        ctx.fillStyle=m.color;
+        m.rects.forEach(function(r){ctx.fillRect(r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height)});
+      });
+      var d=c.toDataURL('image/jpeg',0.92);c.width=0;
+      post({t:'exported',page:n,data:d.split(',')[1]});
+    });
+  });
+};
+window.__unmark=function(id){allMarks=allMarks.filter(function(m){return m.id!==id});document.querySelectorAll('.hlr[data-m="'+id+'"]').forEach(function(d){d.remove()})};
 window.__goto=function(n){var p=pages[Math.max(0,Math.min(n,pages.length-1))];if(p)window.scrollTo(0,p.el.offsetTop)};
 
 var selT=null;

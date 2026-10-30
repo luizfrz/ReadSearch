@@ -23,6 +23,13 @@ export default function BookCard({ item, onPress, onLongPress, selecting, checke
         <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
           {item.author || item.source || (item.fileType || '').toUpperCase()}
         </Text>
+        {item.formats && item.formats.length ? (
+          <View style={{ flexDirection: 'row', marginTop: 5 }}>
+            {item.formats.slice(0, 3).map((f) => (
+              <Text key={f} style={{ color: colors.accent, borderColor: colors.border, borderWidth: 1, borderRadius: 6, fontSize: 9, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 1, marginRight: 4 }}>{f.toUpperCase()}</Text>
+            ))}
+          </View>
+        ) : null}
         {item.total > 1 ? (
           <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.card2, marginTop: 6, overflow: 'hidden' }}>
             <View style={{ height: '100%', width: `${Math.min(100, ((item.page + 1) / item.total) * 100)}%`, backgroundColor: colors.accent }} />
